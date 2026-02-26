@@ -10,13 +10,18 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/cc1a2b/shellgate/internal/auth"
+	"github.com/cc1a2b/shellgate/internal/config"
 	"github.com/cc1a2b/shellgate/internal/server"
+	"github.com/cc1a2b/shellgate/internal/telegram"
 	sgTLS "github.com/cc1a2b/shellgate/internal/tls"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -64,12 +69,46 @@ func rootCmd() *cobra.Command {
 		share           bool
 		shareTTL        string
 		shareMaxViewers int
+
+		// Phase 9: Dynamic ACL
+		maxFailedAttempts int
+		banDuration       string
+		geoIP             bool
+		geoIPDB           string
+		allowedCountries  string
+		blockedCountries  string
+		accessWindowStart string
+		accessWindowEnd   string
+		accessWindowTZ    string
+
+		// Phase 10: Stealth Mode
+		stealth      bool
+		randomPort   bool
+		portRangeMin int
+		portRangeMax int
+		autoClose    string
+
+		// Phase 8: Telegram
+		telegramEnabled bool
+		telegramToken   string
+		telegramUsers   string
+		externalHost    string
+
+		// Phase 11: Audit
+		auditLog      string
+		webhookURL    string
+		webhookEvents string
+		metrics       bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "shellgate",
 		Short: "Instant web-based terminal access from a single binary",
 		Long:  "ShellGate exposes a fully interactive terminal session over the browser via WebSocket.\nYour server is one click away.",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Load Viper config before any command runs
+			return config.Load()
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runServer(serverParams{
 				host: host, port: port, shell: shell, verbose: verbose,
@@ -79,6 +118,19 @@ func rootCmd() *cobra.Command {
 				maxSessions: maxSessions, timeout: timeout, idleTimeout: idleTimeout,
 				record: record, recordDir: recordDir,
 				share: share, shareTTL: shareTTL, shareMaxViewers: shareMaxViewers,
+				// Phase 9
+				maxFailedAttempts: maxFailedAttempts, banDuration: banDuration,
+				geoIP: geoIP, geoIPDB: geoIPDB,
+				allowedCountries: allowedCountries, blockedCountries: blockedCountries,
+				accessWindowStart: accessWindowStart, accessWindowEnd: accessWindowEnd, accessWindowTZ: accessWindowTZ,
+				// Phase 10
+				stealth: stealth, randomPort: randomPort,
+				portRangeMin: portRangeMin, portRangeMax: portRangeMax, autoClose: autoClose,
+				// Phase 8
+				telegramEnabled: telegramEnabled, telegramToken: telegramToken,
+				telegramUsers: telegramUsers, externalHost: externalHost,
+				// Phase 11
+				auditLog: auditLog, webhookURL: webhookURL, webhookEvents: webhookEvents, metrics: metrics,
 			})
 		},
 		SilenceUsage:  true,
@@ -125,6 +177,46 @@ func rootCmd() *cobra.Command {
 	f.BoolVar(&share, "share", false, "Enable session sharing")
 	f.StringVar(&shareTTL, "share-ttl", "1h", "Share link TTL")
 	f.IntVar(&shareMaxViewers, "share-max-viewers", 10, "Max viewers per share")
+
+	// Phase 9: Dynamic ACL
+	f.IntVar(&maxFailedAttempts, "max-failed-attempts", 10, "Max auth failures before IP ban (0=disable)")
+	f.StringVar(&banDuration, "ban-duration", "15m", "Duration of IP bans")
+	f.BoolVar(&geoIP, "geoip", false, "Enable GeoIP filtering")
+	f.StringVar(&geoIPDB, "geoip-db", "", "Path to MaxMind GeoLite2 .mmdb file")
+	f.StringVar(&allowedCountries, "allowed-countries", "", "Comma-separated allowed country codes")
+	f.StringVar(&blockedCountries, "blocked-countries", "", "Comma-separated blocked country codes")
+	f.StringVar(&accessWindowStart, "access-window-start", "", "Access window start time (HH:MM)")
+	f.StringVar(&accessWindowEnd, "access-window-end", "", "Access window end time (HH:MM)")
+	f.StringVar(&accessWindowTZ, "access-window-tz", "", "Access window timezone (e.g. Asia/Riyadh)")
+
+	// Phase 10: Stealth Mode
+	f.BoolVar(&stealth, "stealth", false, "Start without opening listener (wait for Telegram /open)")
+	f.BoolVar(&randomPort, "random-port", false, "Use random port on each /open")
+	f.IntVar(&portRangeMin, "port-range-min", 10000, "Minimum port for random selection")
+	f.IntVar(&portRangeMax, "port-range-max", 65000, "Maximum port for random selection")
+	f.StringVar(&autoClose, "auto-close", "", "Auto-close listener after duration (e.g. 1h)")
+
+	// Phase 8: Telegram Bot
+	f.BoolVar(&telegramEnabled, "telegram", false, "Enable Telegram bot control")
+	f.StringVar(&telegramToken, "telegram-token", os.Getenv("SHELLGATE_TELEGRAM_TOKEN"), "Telegram bot token (prefer SHELLGATE_TELEGRAM_TOKEN env)")
+	f.StringVar(&telegramUsers, "telegram-users", "", "Comma-separated allowed Telegram user IDs")
+	f.StringVar(&externalHost, "external-host", "", "External hostname for generating access links")
+
+	// Phase 11: Audit
+	f.StringVar(&auditLog, "audit-log", "", "Path to audit log file (JSON lines)")
+	f.StringVar(&webhookURL, "webhook-url", "", "Webhook URL for event notifications")
+	f.StringVar(&webhookEvents, "webhook-events", "", "Comma-separated event types for webhook filter")
+	f.BoolVar(&metrics, "metrics", false, "Enable /metrics endpoint (Prometheus format)")
+
+	// Bind viper to flags
+	viper.BindPFlag("host", f.Lookup("host"))
+	viper.BindPFlag("port", f.Lookup("port"))
+	viper.BindPFlag("shell", f.Lookup("shell"))
+	viper.BindPFlag("auth", f.Lookup("auth"))
+	viper.BindPFlag("rate-limit", f.Lookup("rate-limit"))
+	viper.BindPFlag("max-sessions", f.Lookup("max-sessions"))
+	viper.BindPFlag("timeout", f.Lookup("timeout"))
+	viper.BindPFlag("idle-timeout", f.Lookup("idle-timeout"))
 
 	// Subcommands
 	cmd.AddCommand(serveCmd(cmd))
@@ -289,6 +381,26 @@ type serverParams struct {
 	port, maxSessions, shareMaxViewers                                int
 	rateLimit                                                         float64
 	verbose, noAuthAck, tls, record, share                            bool
+
+	// Phase 9
+	maxFailedAttempts                                          int
+	banDuration                                                string
+	geoIP                                                      bool
+	geoIPDB, allowedCountries, blockedCountries                string
+	accessWindowStart, accessWindowEnd, accessWindowTZ         string
+
+	// Phase 10
+	stealth, randomPort                                        bool
+	portRangeMin, portRangeMax                                 int
+	autoClose                                                  string
+
+	// Phase 8
+	telegramEnabled                                            bool
+	telegramToken, telegramUsers, externalHost                 string
+
+	// Phase 11
+	auditLog, webhookURL, webhookEvents                        string
+	metrics                                                    bool
 }
 
 func runServer(p serverParams) error {
@@ -320,6 +432,37 @@ func runServer(p serverParams) error {
 		}
 	}
 
+	// Parse ban duration
+	banDuration, err := time.ParseDuration(p.banDuration)
+	if err != nil {
+		return fmt.Errorf("parse ban-duration: %w", err)
+	}
+
+	// Parse auto-close TTL
+	var autoCloseTTL time.Duration
+	if p.autoClose != "" {
+		autoCloseTTL, err = time.ParseDuration(p.autoClose)
+		if err != nil {
+			return fmt.Errorf("parse auto-close: %w", err)
+		}
+	}
+
+	// Parse Telegram user IDs
+	var telegramUserIDs []int64
+	if p.telegramUsers != "" {
+		for _, s := range strings.Split(p.telegramUsers, ",") {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			id, err := strconv.ParseInt(s, 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid telegram user ID %q: %w", s, err)
+			}
+			telegramUserIDs = append(telegramUserIDs, id)
+		}
+	}
+
 	cfg := server.Config{
 		Host: p.host, Port: p.port, Shell: p.shell, Verbose: p.verbose,
 		AuthMode: p.authMode, Token: p.token, Password: p.password,
@@ -328,6 +471,36 @@ func runServer(p serverParams) error {
 		MaxSessions: p.maxSessions, Timeout: timeout, IdleTimeout: idleTimeout,
 		RecordEnabled: p.record, RecordDir: recordDir,
 		ShareEnabled: p.share, ShareTTL: shareTTL, ShareMaxViewers: p.shareMaxViewers,
+
+		// Phase 9
+		MaxFailedAttempts: p.maxFailedAttempts,
+		BanDuration:       banDuration,
+		GeoIPEnabled:      p.geoIP,
+		GeoIPDBPath:       p.geoIPDB,
+		AllowedCountries:  p.allowedCountries,
+		BlockedCountries:  p.blockedCountries,
+		AccessWindowStart: p.accessWindowStart,
+		AccessWindowEnd:   p.accessWindowEnd,
+		AccessWindowTZ:    p.accessWindowTZ,
+
+		// Phase 10
+		StealthEnabled: p.stealth,
+		RandomPort:     p.randomPort,
+		PortRangeMin:   p.portRangeMin,
+		PortRangeMax:   p.portRangeMax,
+		AutoCloseTTL:   autoCloseTTL,
+
+		// Phase 8
+		TelegramEnabled: p.telegramEnabled,
+		TelegramToken:   p.telegramToken,
+		TelegramUserIDs: telegramUserIDs,
+		ExternalHost:    p.externalHost,
+
+		// Phase 11
+		AuditLogPath:   p.auditLog,
+		WebhookURL:     p.webhookURL,
+		WebhookEvents:  p.webhookEvents,
+		MetricsEnabled: p.metrics,
 	}
 
 	// Setup TLS
@@ -375,6 +548,60 @@ func runServer(p serverParams) error {
 		return fmt.Errorf("create server: %w", err)
 	}
 
+	// Setup Stealth Controller (Phase 10)
+	var stealthCtrl *server.StealthController
+	if p.stealth {
+		stealthCtrl = server.NewStealthController(srv, server.StealthConfig{
+			RandomPort:   p.randomPort,
+			PortRangeMin: p.portRangeMin,
+			PortRangeMax: p.portRangeMax,
+			AutoCloseTTL: autoCloseTTL,
+		})
+	}
+
+	// Setup Telegram Bot (Phase 8)
+	var bot *telegram.Bot
+	if p.telegramEnabled {
+		if p.telegramToken == "" {
+			return fmt.Errorf("--telegram requires SHELLGATE_TELEGRAM_TOKEN env var or --telegram-token")
+		}
+		if len(telegramUserIDs) == 0 {
+			return fmt.Errorf("--telegram requires --telegram-users (comma-separated Telegram user IDs)")
+		}
+
+		// Create adapter for ServerController interface
+		botController := &botControllerAdapter{srv: srv}
+
+		// Create adapter for StealthController interface if stealth mode
+		var stealthAdapter telegram.StealthController
+		if stealthCtrl != nil {
+			stealthAdapter = stealthCtrl
+		}
+
+		// Create adapter for ACL controller
+		aclAdapter := &aclControllerAdapter{acl: srv.ACL()}
+
+		bot, err = telegram.NewBot(telegram.BotConfig{
+			Token:        p.telegramToken,
+			AllowedUsers: telegramUserIDs,
+			ExternalHost: p.externalHost,
+			TLSEnabled:   p.tls,
+			Stealth:      p.stealth,
+		}, botController, stealthAdapter, aclAdapter)
+		if err != nil {
+			return fmt.Errorf("create telegram bot: %w", err)
+		}
+
+		// Wire notifications
+		notifier := telegram.NewNotifier(bot)
+		srv.SetEventHandler(notifier.EventHandler())
+
+		bot.Start()
+		defer bot.Stop()
+
+		slog.Info("telegram bot enabled", "users", telegramUserIDs)
+	}
+
 	printBanner(p, srv, tlsInfo)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -397,17 +624,15 @@ func runServer(p serverParams) error {
 		}()
 	}
 
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err.Error() != "http: Server closed" {
-			errCh <- err
+	if p.stealth {
+		// Stealth mode: don't start listener, wait for Telegram /open
+		slog.Info("stealth mode: server constructed but not listening — use Telegram /open to start")
+		if bot != nil {
+			bot.SendNotification("ShellGate started in *stealth mode*. Use /open to start listening.")
 		}
-		close(errCh)
-	}()
 
-	select {
-	case err := <-errCh:
-		return fmt.Errorf("server: %w", err)
-	case <-ctx.Done():
+		// Block until signal
+		<-ctx.Done()
 		fmt.Fprintln(os.Stderr, "\nShutting down...")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -415,10 +640,93 @@ func runServer(p serverParams) error {
 			return fmt.Errorf("shutdown: %w", err)
 		}
 		fmt.Fprintln(os.Stderr, "Done.")
+	} else {
+		// Normal mode: start listener immediately
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err.Error() != "http: Server closed" {
+				errCh <- err
+			}
+			close(errCh)
+		}()
+
+		select {
+		case err := <-errCh:
+			return fmt.Errorf("server: %w", err)
+		case <-ctx.Done():
+			fmt.Fprintln(os.Stderr, "\nShutting down...")
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := srv.Shutdown(shutdownCtx); err != nil {
+				return fmt.Errorf("shutdown: %w", err)
+			}
+			fmt.Fprintln(os.Stderr, "Done.")
+		}
 	}
 
 	return nil
 }
+
+// botControllerAdapter adapts *server.Server to the telegram.ServerController interface.
+type botControllerAdapter struct {
+	srv *server.Server
+}
+
+func (a *botControllerAdapter) StartListener() (string, error)    { return a.srv.StartListener() }
+func (a *botControllerAdapter) StopListener() error               { return a.srv.StopListener() }
+func (a *botControllerAdapter) IsListening() bool                  { return a.srv.IsListening() }
+func (a *botControllerAdapter) GenerateOneTimeToken(ttl time.Duration) (string, error) {
+	return a.srv.GenerateOneTimeToken(ttl)
+}
+func (a *botControllerAdapter) RevokeToken(token string) error { return a.srv.RevokeToken(token) }
+func (a *botControllerAdapter) GetStatus() telegram.ServerStatus {
+	s := a.srv.GetStatus()
+	return telegram.ServerStatus{
+		Listening:   s.Listening,
+		Port:        s.Port,
+		Uptime:      s.Uptime,
+		Sessions:    s.Sessions,
+		TLSEnabled:  s.TLSEnabled,
+		RecordingOn: s.RecordingOn,
+		BannedIPs:   s.BannedIPs,
+	}
+}
+func (a *botControllerAdapter) ListSessions() []telegram.SessionInfo {
+	sessions := a.srv.ListSessions()
+	result := make([]telegram.SessionInfo, len(sessions))
+	for i, s := range sessions {
+		result[i] = telegram.SessionInfo{
+			ID:        s.ID,
+			ClientIP:  s.ClientIP,
+			Duration:  s.Duration,
+			UserAgent: s.UserAgent,
+		}
+	}
+	return result
+}
+func (a *botControllerAdapter) KillSession(id string) error        { return a.srv.KillSession(id) }
+func (a *botControllerAdapter) AddWhitelistIP(cidr string) error   { return a.srv.AddWhitelistIP(cidr) }
+func (a *botControllerAdapter) RemoveWhitelistIP(cidr string) error { return a.srv.RemoveWhitelistIP(cidr) }
+func (a *botControllerAdapter) ToggleRecording() bool              { return a.srv.ToggleRecording() }
+func (a *botControllerAdapter) CreateShareLink(sessionID string) (string, error) {
+	return a.srv.CreateShareLink(sessionID)
+}
+func (a *botControllerAdapter) GetPort() int     { return a.srv.GetPort() }
+func (a *botControllerAdapter) SetPort(port int) { a.srv.SetPort(port) }
+
+// aclControllerAdapter adapts *acl.DynamicACL to the telegram.ACLController interface.
+type aclControllerAdapter struct {
+	acl interface {
+		Ban(ip string)
+		Unban(ip string)
+		ListBanned() map[string]time.Time
+		ListNetworks() []string
+	}
+}
+
+func (a *aclControllerAdapter) Ban(ip string)                   { a.acl.Ban(ip) }
+func (a *aclControllerAdapter) Unban(ip string)                 { a.acl.Unban(ip) }
+func (a *aclControllerAdapter) ListBanned() map[string]time.Time { return a.acl.ListBanned() }
+func (a *aclControllerAdapter) ListNetworks() []string           { return a.acl.ListNetworks() }
 
 func printBanner(p serverParams, srv *server.Server, tlsInfo string) {
 	displayHost := p.host
@@ -453,6 +761,22 @@ func printBanner(p serverParams, srv *server.Server, tlsInfo string) {
 
 	if p.share {
 		extra += "\n│  Sharing: enabled"
+	}
+
+	if p.stealth {
+		extra += "\n│  Stealth: enabled (waiting for /open)"
+	}
+
+	if p.telegramEnabled {
+		extra += "\n│  Telegram: enabled"
+	}
+
+	if p.metrics {
+		extra += "\n│  Metrics: /metrics"
+	}
+
+	if p.auditLog != "" {
+		extra += "\n│  Audit: " + p.auditLog
 	}
 
 	fmt.Fprintf(os.Stderr, `
