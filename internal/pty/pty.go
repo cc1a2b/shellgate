@@ -24,6 +24,7 @@ type Session struct {
 func New(shell string, envVars []string) (*Session, error) {
 	cmd := exec.Command(shell)
 	cmd.Env = buildEnv(envVars)
+	cmd.Dir = getEnvOrDefault("HOME", "/root")
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
