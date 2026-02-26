@@ -1,6 +1,7 @@
 # ShellGate
 
 **Your server is one click away.**
+<img width="3840" height="2016" alt="image" src="https://github.com/user-attachments/assets/5d43a45b-16ec-4174-b5d6-3289d7a0c0d0" />
 
 Instant web-based terminal access to any server from a single binary. Install with one command, get a secure browser terminal in seconds.
 
