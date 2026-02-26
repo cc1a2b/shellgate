@@ -1,0 +1,28 @@
+# Binary
+shellgate
+shellgate.exe
+dist/
+
+# Go
+*.test
+*.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ShellGate runtime
+.shellgate/
+*.cast
+
+# Environment
+.env
+.env.*
