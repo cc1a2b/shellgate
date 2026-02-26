@@ -82,7 +82,7 @@ func (p *PasswordAuth) Middleware(next http.Handler) http.Handler {
 	// Login page
 	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(p.loginPage)
+		_, _ = w.Write(p.loginPage)
 	})
 
 	// Everything else requires authentication

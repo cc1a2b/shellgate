@@ -166,9 +166,9 @@ func (s *Server) readPump(ctx context.Context, conn *websocket.Conn, ptySess *pt
 	defer conn.Close()
 
 	conn.SetReadLimit(MaxMessageSize)
-	conn.SetReadDeadline(time.Now().Add(PongWait))
+	_ = conn.SetReadDeadline(time.Now().Add(PongWait))
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(PongWait))
+		_ = conn.SetReadDeadline(time.Now().Add(PongWait))
 		return nil
 	})
 
@@ -404,7 +404,7 @@ func (s *Server) handleShareWebSocket(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			conn.SetWriteDeadline(time.Now().Add(WriteWait))
+			_ = conn.SetWriteDeadline(time.Now().Add(WriteWait))
 			if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
 				return
 			}
