@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	"syscall"
 
 	"github.com/creack/pty"
 )
@@ -24,14 +23,7 @@ type Session struct {
 // The shell runs with a clean environment inheriting only essential variables.
 func New(shell string, envVars []string) (*Session, error) {
 	cmd := exec.Command(shell)
-
-	// Build a clean environment
 	cmd.Env = buildEnv(envVars)
-
-	// Set process group so we can kill the entire tree on cleanup
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -44,7 +36,6 @@ func New(shell string, envVars []string) (*Session, error) {
 		done: make(chan struct{}),
 	}
 
-	// Wait for the process in a goroutine and signal when done
 	go func() {
 		_ = cmd.Wait()
 		close(s.done)
@@ -93,24 +84,17 @@ func (s *Session) Done() <-chan struct{} {
 	return s.done
 }
 
-// Close terminates the PTY session, killing the process group and closing the fd.
+// Close terminates the PTY session, killing the process and closing the fd.
 func (s *Session) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var firstErr error
 
-	// Kill the entire process group
 	if s.cmd.Process != nil {
-		pgid, err := syscall.Getpgid(s.cmd.Process.Pid)
-		if err == nil {
-			_ = syscall.Kill(-pgid, syscall.SIGTERM)
-		} else {
-			_ = s.cmd.Process.Kill()
-		}
+		_ = s.cmd.Process.Kill()
 	}
 
-	// Close the PTY fd
 	if err := s.ptmx.Close(); err != nil && firstErr == nil {
 		firstErr = fmt.Errorf("pty close: %w", err)
 	}
