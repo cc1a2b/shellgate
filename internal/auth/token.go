@@ -23,8 +23,9 @@ const (
 // On first valid auth (via header or query param), a session cookie is set
 // so that subsequent requests (CSS, JS, WebSocket) pass through.
 type TokenAuth struct {
-	token   []byte
-	hmacKey []byte
+	token         []byte
+	hmacKey       []byte
+	oneTimeTokens *OneTimeTokenStore
 }
 
 // NewTokenAuth creates a new token authenticator with the given token.
@@ -104,12 +105,18 @@ func (t *TokenAuth) Middleware(next http.Handler) http.Handler {
 // Tokens can be provided via:
 //   - Authorization: Bearer <token> header
 //   - ?token=<token> query parameter
+//
+// Also checks one-time tokens if a store is configured.
 func (t *TokenAuth) Validate(r *http.Request) (bool, error) {
 	// Check Authorization header
 	authHeader := r.Header.Get("Authorization")
 	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
 		provided := []byte(authHeader[7:])
 		if subtle.ConstantTimeCompare(provided, t.token) == 1 {
+			return true, nil
+		}
+		// Check one-time tokens via header
+		if t.oneTimeTokens != nil && t.oneTimeTokens.Validate(authHeader[7:]) {
 			return true, nil
 		}
 	}
@@ -120,6 +127,10 @@ func (t *TokenAuth) Validate(r *http.Request) (bool, error) {
 		if subtle.ConstantTimeCompare([]byte(queryToken), t.token) == 1 {
 			return true, nil
 		}
+		// Check one-time tokens via query param
+		if t.oneTimeTokens != nil && t.oneTimeTokens.Validate(queryToken) {
+			return true, nil
+		}
 	}
 
 	return false, nil
@@ -128,6 +139,11 @@ func (t *TokenAuth) Validate(r *http.Request) (bool, error) {
 // Token returns the current token string.
 func (t *TokenAuth) Token() string {
 	return string(t.token)
+}
+
+// SetOneTimeStore sets the one-time token store for validating single-use tokens.
+func (t *TokenAuth) SetOneTimeStore(store *OneTimeTokenStore) {
+	t.oneTimeTokens = store
 }
 
 // setSessionCookie creates and sets an HMAC-signed session cookie.
