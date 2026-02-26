@@ -1,6 +1,6 @@
-# Binary
-shellgate
-shellgate.exe
+# Binary (root level only)
+/shellgate
+/shellgate.exe
 dist/
 
 # Go
