@@ -103,7 +103,7 @@ func TestWebSocketMessageExchange(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read output messages until we find our marker
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	found := false
 	for i := 0; i < 50; i++ {
 		_, raw, err := conn.ReadMessage()
@@ -141,7 +141,7 @@ func TestWebSocketPingPong(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read until we get a pong
-	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	found := false
 	for i := 0; i < 20; i++ {
 		_, raw, err := conn.ReadMessage()
@@ -182,7 +182,7 @@ func TestWebSocketInvalidMessage(t *testing.T) {
 	err = conn.WriteJSON(WSMessage{Type: "ping"})
 	require.NoError(t, err)
 
-	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	for i := 0; i < 20; i++ {
 		_, raw, err := conn.ReadMessage()
 		if err != nil {

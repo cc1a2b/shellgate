@@ -7,6 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Compile-time interface check.
+var _ ServerController = (*mockController)(nil)
+
 // mockController implements ServerController for testing.
 type mockController struct {
 	listening  bool

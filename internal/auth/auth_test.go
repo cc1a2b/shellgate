@@ -119,7 +119,7 @@ func TestPasswordAuth_LoginFlow(t *testing.T) {
 
 	handler := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("protected"))
+		_, _ = w.Write([]byte("protected"))
 	}))
 
 	// Unauthenticated request → redirect to /auth

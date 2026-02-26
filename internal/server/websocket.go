@@ -77,7 +77,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	ptySess, err := pty.New(s.cfg.Shell, nil)
 	if err != nil {
 		slog.Error("pty allocation failed", "error", err)
-		conn.WriteMessage(websocket.CloseMessage,
+		_ = conn.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "failed to allocate terminal"))
 		conn.Close()
 		return
@@ -119,7 +119,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		if rec != nil {
 			rec.Close()
 		}
-		conn.WriteMessage(websocket.CloseMessage,
+		_ = conn.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error()))
 		conn.Close()
 		return
@@ -204,7 +204,7 @@ func (s *Server) readPump(ctx context.Context, conn *websocket.Conn, ptySess *pt
 					sess.UpdateLastInput()
 				}
 				if rec != nil {
-					rec.WriteInput([]byte(msg.Data))
+					_ = rec.WriteInput([]byte(msg.Data))
 				}
 			}
 		case "resize":
@@ -213,12 +213,12 @@ func (s *Server) readPump(ctx context.Context, conn *websocket.Conn, ptySess *pt
 					slog.Debug("pty resize error", "error", err)
 				}
 				if rec != nil {
-					rec.WriteResize(int(msg.Cols), int(msg.Rows))
+					_ = rec.WriteResize(int(msg.Cols), int(msg.Rows))
 				}
 			}
 		case "ping":
 			wsMu.Lock()
-			conn.SetWriteDeadline(time.Now().Add(WriteWait))
+			_ = conn.SetWriteDeadline(time.Now().Add(WriteWait))
 			err := conn.WriteJSON(WSMessage{Type: "pong"})
 			wsMu.Unlock()
 			if err != nil {
@@ -267,7 +267,7 @@ func (s *Server) writePump(ctx context.Context, conn *websocket.Conn, ptySess *p
 
 				// Record output
 				if rec != nil {
-					rec.WriteOutput(data)
+					_ = rec.WriteOutput(data)
 				}
 
 				// Broadcast to share viewers
@@ -303,7 +303,7 @@ func (s *Server) writePump(ctx context.Context, conn *websocket.Conn, ptySess *p
 		}
 
 		wsMu.Lock()
-		conn.SetWriteDeadline(time.Now().Add(WriteWait))
+		_ = conn.SetWriteDeadline(time.Now().Add(WriteWait))
 		err = conn.WriteMessage(websocket.TextMessage, payload)
 		wsMu.Unlock()
 
@@ -319,7 +319,7 @@ func (s *Server) writePump(ctx context.Context, conn *websocket.Conn, ptySess *p
 		case <-ptySess.Done():
 			_ = flush()
 			wsMu.Lock()
-			conn.WriteMessage(websocket.CloseMessage,
+			_ = conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "shell exited"))
 			wsMu.Unlock()
 			return
@@ -336,7 +336,7 @@ func (s *Server) writePump(ctx context.Context, conn *websocket.Conn, ptySess *p
 
 		case <-ticker.C:
 			wsMu.Lock()
-			conn.SetWriteDeadline(time.Now().Add(WriteWait))
+			_ = conn.SetWriteDeadline(time.Now().Add(WriteWait))
 			err := conn.WriteMessage(websocket.PingMessage, nil)
 			wsMu.Unlock()
 			if err != nil {

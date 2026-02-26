@@ -71,7 +71,7 @@ func (o *OTPAuth) Middleware(next http.Handler) http.Handler {
 
 	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(o.loginPage)
+		_, _ = w.Write(o.loginPage)
 	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

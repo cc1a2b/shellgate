@@ -209,14 +209,14 @@ func rootCmd() *cobra.Command {
 	f.BoolVar(&metrics, "metrics", false, "Enable /metrics endpoint (Prometheus format)")
 
 	// Bind viper to flags
-	viper.BindPFlag("host", f.Lookup("host"))
-	viper.BindPFlag("port", f.Lookup("port"))
-	viper.BindPFlag("shell", f.Lookup("shell"))
-	viper.BindPFlag("auth", f.Lookup("auth"))
-	viper.BindPFlag("rate-limit", f.Lookup("rate-limit"))
-	viper.BindPFlag("max-sessions", f.Lookup("max-sessions"))
-	viper.BindPFlag("timeout", f.Lookup("timeout"))
-	viper.BindPFlag("idle-timeout", f.Lookup("idle-timeout"))
+	_ = viper.BindPFlag("host", f.Lookup("host"))
+	_ = viper.BindPFlag("port", f.Lookup("port"))
+	_ = viper.BindPFlag("shell", f.Lookup("shell"))
+	_ = viper.BindPFlag("auth", f.Lookup("auth"))
+	_ = viper.BindPFlag("rate-limit", f.Lookup("rate-limit"))
+	_ = viper.BindPFlag("max-sessions", f.Lookup("max-sessions"))
+	_ = viper.BindPFlag("timeout", f.Lookup("timeout"))
+	_ = viper.BindPFlag("idle-timeout", f.Lookup("idle-timeout"))
 
 	// Subcommands
 	cmd.AddCommand(serveCmd(cmd))

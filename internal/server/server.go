@@ -352,7 +352,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	s.metrics.SetActiveSessions(s.sessions.Count())
-	w.Write([]byte(s.metrics.Render()))
+	_, _ = w.Write([]byte(s.metrics.Render()))
 }
 
 // StartListener creates a net.Listener and starts serving. Non-blocking.

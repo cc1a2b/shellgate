@@ -81,7 +81,7 @@ func (l *Logger) Close() {
 	defer l.mu.Unlock()
 
 	if l.file != nil {
-		l.file.Sync()
+		_ = l.file.Sync()
 		l.file.Close()
 	}
 	if l.webhook != nil {
