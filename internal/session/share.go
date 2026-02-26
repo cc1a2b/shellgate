@@ -160,6 +160,18 @@ func (sl *ShareLink) Close() {
 	}
 }
 
+// BroadcastToSession sends output data to all share links associated with a session.
+func (sm *ShareManager) BroadcastToSession(sessionID string, data []byte) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	for _, link := range sm.links {
+		if link.SessionID == sessionID && !link.closed {
+			link.Broadcast(data)
+		}
+	}
+}
+
 // Close shuts down the share manager.
 func (sm *ShareManager) Close() {
 	close(sm.done)

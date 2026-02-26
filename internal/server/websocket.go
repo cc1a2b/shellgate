@@ -60,7 +60,18 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	clientIP := extractIP(r.RemoteAddr).String()
 	slog.Info("websocket connected", "remote", r.RemoteAddr)
+
+	// Emit connection event
+	if s.metrics != nil {
+		s.metrics.IncConnection()
+	}
+	s.emitServerEvent("connect", map[string]string{
+		"ip":         clientIP,
+		"user_agent": r.UserAgent(),
+	})
+	s.auditLog("connect", "", clientIP, "websocket connected")
 
 	// Create PTY session
 	ptySess, err := pty.New(s.cfg.Shell, nil)
@@ -114,6 +125,12 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Emit session creation event
+	if s.metrics != nil {
+		s.metrics.IncSessionCreated()
+	}
+	s.auditLog("session_create", sessionID, clientIP, "new session")
+
 	ctx, cancel := context.WithCancel(r.Context())
 	wsDone := make(chan struct{})
 
@@ -130,6 +147,18 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	<-wsDone
 	s.sessions.Remove(sessionID)
 	slog.Info("websocket disconnected", "remote", r.RemoteAddr, "session", sessionID)
+
+	// Emit disconnect event
+	if s.metrics != nil {
+		s.metrics.IncSessionClosed()
+	}
+	duration := time.Since(sess.StartedAt).Truncate(time.Second).String()
+	s.emitServerEvent("disconnect", map[string]string{
+		"session_id": sessionID,
+		"ip":         clientIP,
+		"duration":   duration,
+	})
+	s.auditLog("session_close", sessionID, clientIP, "disconnected after "+duration)
 }
 
 // readPump reads messages from the WebSocket and forwards input to the PTY.
@@ -322,9 +351,7 @@ func (s *Server) broadcastToShares(sessionID string, data []byte) {
 	if s.shares == nil {
 		return
 	}
-	// This is called frequently; the ShareManager will handle routing
-	// We iterate through share links in the ShareManager
-	// For simplicity, share links track their session ID
+	s.shares.BroadcastToSession(sessionID, data)
 }
 
 // handleShareWebSocket handles read-only WebSocket connections for shared sessions.

@@ -101,21 +101,32 @@ func (wl *IPWhitelist) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// RateLimiter provides per-IP rate limiting.
+// rateLimiterEntry holds a limiter and its last access time for TTL eviction.
+type rateLimiterEntry struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
+// RateLimiter provides per-IP rate limiting with TTL-based eviction.
 type RateLimiter struct {
-	limiters map[string]*rate.Limiter
-	mu       sync.Mutex
-	rps      float64
-	burst    int
+	entries map[string]*rateLimiterEntry
+	mu      sync.Mutex
+	rps     float64
+	burst   int
+	ttl     time.Duration
 }
 
 // NewRateLimiter creates a new per-IP rate limiter.
+// Entries are evicted after 10 minutes of inactivity.
 func NewRateLimiter(requestsPerSecond float64) *RateLimiter {
-	return &RateLimiter{
-		limiters: make(map[string]*rate.Limiter),
-		rps:      requestsPerSecond,
-		burst:    int(requestsPerSecond * 2),
+	rl := &RateLimiter{
+		entries: make(map[string]*rateLimiterEntry),
+		rps:     requestsPerSecond,
+		burst:   int(requestsPerSecond * 2),
+		ttl:     10 * time.Minute,
 	}
+	go rl.evictLoop()
+	return rl
 }
 
 // Middleware returns an HTTP middleware that enforces rate limits.
@@ -138,20 +149,32 @@ func (rl *RateLimiter) getLimiter(ip string) *rate.Limiter {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	if limiter, ok := rl.limiters[ip]; ok {
-		return limiter
+	now := time.Now()
+	if entry, ok := rl.entries[ip]; ok {
+		entry.lastSeen = now
+		return entry.limiter
 	}
 
 	limiter := rate.NewLimiter(rate.Limit(rl.rps), rl.burst)
-	rl.limiters[ip] = limiter
-
-	// Garbage collect old entries periodically (simple approach)
-	if len(rl.limiters) > 10000 {
-		rl.limiters = make(map[string]*rate.Limiter)
-		rl.limiters[ip] = limiter
-	}
-
+	rl.entries[ip] = &rateLimiterEntry{limiter: limiter, lastSeen: now}
 	return limiter
+}
+
+// evictLoop removes stale rate limiter entries every 60 seconds.
+func (rl *RateLimiter) evictLoop() {
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		rl.mu.Lock()
+		cutoff := time.Now().Add(-rl.ttl)
+		for ip, entry := range rl.entries {
+			if entry.lastSeen.Before(cutoff) {
+				delete(rl.entries, ip)
+			}
+		}
+		rl.mu.Unlock()
+	}
 }
 
 // extractIP parses the IP address from a remote address string.

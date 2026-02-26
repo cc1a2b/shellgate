@@ -61,8 +61,10 @@ func NewManager(cfg ManagerConfig) *Manager {
 		done:        make(chan struct{}),
 	}
 
-	// Start cleanup goroutine
-	go m.cleanupLoop()
+	// Only start cleanup goroutine if timeouts are configured
+	if cfg.Timeout > 0 || cfg.IdleTimeout > 0 {
+		go m.cleanupLoop()
+	}
 
 	return m
 }
